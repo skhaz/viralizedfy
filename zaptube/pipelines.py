@@ -4,6 +4,7 @@ import re
 import hashlib
 import mimetypes
 import functools
+import base36
 from pathlib import Path
 from unicodedata import normalize
 
@@ -12,9 +13,6 @@ from scrapy.utils.python import to_bytes
 from scrapy.exceptions import DropItem
 from scrapy.exporters import BaseItemExporter
 from scrapy.pipelines.files import FilesPipeline
-
-import base36
-from jinja2 import Environment, BaseLoader
 
 
 class PreparePipeline():
@@ -77,50 +75,4 @@ class DownloadPipeline(FilesPipeline):
 
   def item_completed(self, results, item, info):
     item['ready'] = bool(results[0][0])
-    return item
-
-
-jinja2 = Environment(loader=BaseLoader()).from_string("""
----
-title: {{ title }}
-tags: [""]
-draft: false
----
-
-{{ content }}
-
-{% if 'video' in mimetype -%}
-<video controls>
-  <source src="{{ filename }}" type="{{ mimetype }}">
-</video>
-{% elif 'image' in mimetype %}
-![{{ title }}]({{ filename }})
-{% elif 'audio' in mimetype %}
-<audio controls>
-  <source src="{{ filename }}" type="{{ mimetype }}">
-</audio>
-{% endif -%}
-""")
-
-
-class MarkdownifyPipeline():
-  def process_item(self, item, spider):
-    content, extension, mimetype, guid, title = (
-      item[key] for key in (
-        'content',
-        'extension',
-        'mimetype',
-        'guid',
-        'title',
-      ))
-
-    context = locals().copy()
-    context['filename'] = f'{guid}{extension}'
-    del context['self']
-
-    path = Path.cwd() / 'output'
-    path.mkdir(parents=True, exist_ok=True)
-    markdown = jinja2.render(**context)
-    Path(path, f'{guid}').write_text(markdown)
-
     return item
