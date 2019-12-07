@@ -14,6 +14,7 @@ class Entry(Item):
   media = Field()
   poster = Field()
   mimetype = Field()
+  ext = Field()
   media_url = Field()
 
 

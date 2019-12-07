@@ -61,25 +61,24 @@ class MimetypePipeline():
 
     item['mimetype'] = mimetype
 
+    item['ext'] = mimetypes.guess_extension(mimetype)
+
     return item
 
 
 class DownloadPipeline(FilesPipeline):
+
   def get_media_requests(self, item, info):
-    yield Request(item['media'], meta={'uid': item['uid']})
+    url = item['media']
+    meta = {'uid': item['uid'], 'ext': item['ext']}
+    yield Request(url, meta=meta)
 
   def file_path(self, request, response=None, info=None):
     uid = request.meta['uid']
-    # guid = hashlib.sha1(to_bytes(request.url)).hexdigest()
-    _, ext = os.path.splitext(request.url)
-    return f'{uid}{ext}'
+    ext = request.meta['ext']
+    return ''.join([uid, ext])
 
   def item_completed(self, results, item, info):
-    """
-    image_paths = [x['path'] for ok, x in results if ok]
-    if not image_paths:
-      raise DropItem("Item contains no images")
-    """
     item['media_url'] = "https://storage.googleapis.com/scrapy-test/" + results[0][1]['path']
     return item
 
@@ -120,10 +119,9 @@ draft: false
     context = locals().copy()
     del context['self']
 
-    path = Path.cwd() / 'entries' / 'videos'
+    path = Path.cwd() / 'content'
     path.mkdir(parents=True, exist_ok=True)
-    filename = f"{uid}.md"
     markdown = self.template.render(**context)
-    Path(path, filename).write_text(markdown)
+    Path(path, '%s.md' % uid).write_text(markdown)
 
     return item
