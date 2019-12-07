@@ -1,3 +1,4 @@
+import os
 import sys
 import re
 import hashlib
@@ -6,69 +7,26 @@ import functools
 from pathlib import Path
 from unicodedata import normalize
 
+from scrapy.http import Request
+from scrapy.utils.python import to_bytes
 from scrapy.exceptions import DropItem
 from scrapy.exporters import BaseItemExporter
+from scrapy.pipelines.files import FilesPipeline
 
 import base36
 from jinja2 import Environment, BaseLoader
 
 
-class MimetypePipeline():
+class PreparePipeline():
 
   def process_item(self, item, spider):
-    href = item.get('href')
-    if href is None:
-      raise DropItem(f"No href were found on item: {item}")
-
-    mimetype, _ = mimetypes.guess_type(href)
-    if mimetype is None:
-      raise DropItem(f"Cannot determine the mimetype for href: {href}")
-
-    item['mimetype'] = mimetype
-
-    return item
-
-
-class MarkdownifyPipeline():
-
-  template = Environment(loader=BaseLoader()).from_string("""
----
-title: {{ title }}
-tags: [""]
-draft: false
----
-
-{{ content }}
-
-{% if 'video' in mimetype -%}
-<link rel="preload" href="{{ href }}" as="video" type="video/mp4">
-<video controls>
-  <source src="{{ href }}" type="video/mp4">
-</video>
-{% else %}
-![{{ title }}]({{ href }})
-{% endif %}
-""")
-
-  path = Path('markdowns')
-
-  def open_spider(self, spider):
-    self.path.mkdir(parents=True, exist_ok=True)
-
-  def process_item(self, item, spider):
-    title, content, url, mimetype, href = (
-      item[key]
-      for key in (
-        'title',
-        'content',
-        'url',
-        'mimetype',
-        'href',
-      )
-    )
+    url = item['url'].encode('utf-8')
+    title = item.get('title')
+    if title is None:
+      raise DropItem(f"No title were found on item: {item}")
 
     N = 4
-    sha256 = hashlib.sha256(url.encode('utf-8')).digest()
+    sha256 = hashlib.sha256(url).digest()
     sliced = int.from_bytes(
       memoryview(sha256)[:N].tobytes(), byteorder=sys.byteorder)
     uid = base36.dumps(sliced)
@@ -78,21 +36,94 @@ draft: false
     split = str.split
     deunicode = lambda n: normalize('NFD', n).encode('ascii', 'ignore').decode('utf-8')
     trashout = lambda n: re.sub(r'[.-@/|*]', ' ', n)
-    funcs = [strip, deunicode, trashout, lower, split]
-
+    functions = [strip, deunicode, trashout, lower, split]
     fragments = [
       *functools.reduce(
-        lambda x, f: f(x), funcs, title
-      ),
+        lambda x, f: f(x), functions, title),
       uid,
     ]
+
+    item['uid'] = '-'.join(fragments)
+
+    return item
+
+
+class MimetypePipeline():
+
+  def process_item(self, item, spider):
+    media = item.get('media')
+    if media is None:
+      raise DropItem(f"No media were found on item: {item}")
+
+    mimetype, _ = mimetypes.guess_type(media)
+    if mimetype is None:
+      raise DropItem(f"Cannot determine the mimetype for media: {media}")
+
+    item['mimetype'] = mimetype
+
+    return item
+
+
+class DownloadPipeline(FilesPipeline):
+  def get_media_requests(self, item, info):
+    yield Request(item['media'], meta={'uid': item['uid']})
+
+  def file_path(self, request, response=None, info=None):
+    uid = request.meta['uid']
+    # guid = hashlib.sha1(to_bytes(request.url)).hexdigest()
+    _, ext = os.path.splitext(request.url)
+    return f'{uid}{ext}'
+
+  def item_completed(self, results, item, info):
+    """
+    image_paths = [x['path'] for ok, x in results if ok]
+    if not image_paths:
+      raise DropItem("Item contains no images")
+    """
+    item['media_url'] = "https://storage.googleapis.com/scrapy-test/" + results[0][1]['path']
+    return item
+
+
+class MarkdownifyPipeline():
+
+  template = Environment(loader=BaseLoader()).from_string("""---
+title: {{ title }}
+tags: [""]
+draft: false
+---
+
+{{ content }}
+
+{% if media_url -%}
+{% if 'video' in mimetype -%}
+<video controls>
+  <source src="{{ media_url }}" type="{{ mimetype }}">
+</video>
+{% else %}
+![{{ title }}]({{ media_url }})
+{% endif %}
+{% endif -%}
+  """)
+
+  def process_item(self, item, spider):
+    title, content, mimetype, media_url, uid = (
+      item[key]
+      for key in (
+        'title',
+        'content',
+        'mimetype',
+        'media_url',
+        'uid',
+      )
+    )
 
     context = locals().copy()
     del context['self']
 
+    path = Path.cwd() / 'entries' / 'videos'
+    path.mkdir(parents=True, exist_ok=True)
+    filename = f"{uid}.md"
     markdown = self.template.render(**context)
-    ext = 'md'
-    filename = f"{'-'.join(fragments)}.{ext}"
-    Path(self.path, filename).write_text(markdown)
+    Path(path, filename).write_text(markdown)
 
     return item

@@ -25,6 +25,6 @@ class Spider(CrawlSpider):
     loader = EntryLoader(item=Entry(), response=response)
     loader.add_css('title', 'h1.post-title::text')
     loader.add_css('content', '.article-content p::text')
-    loader.add_css('href', '#player source::attr(src)')
-    loader.add_css('poster', '#player ::attr(poster)')
+    loader.add_css('file_url', '#player source::attr(src)')
+    # loader.add_css('poster_url', '#player ::attr(poster)')
     return loader.load_item()

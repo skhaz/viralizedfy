@@ -48,13 +48,13 @@ class Spider(CrawlSpider):
     loader = self._build_loader(response)
     loader.add_xpath('title', '//*[@class="cs-post-single-header"]/h1/text()')
     loader.add_xpath('content', '//header/h3/text()')
-    loader.add_xpath('href', '//*[@id="player"]/source/@src')
-    loader.add_xpath('poster', '//*[@id="player"]/@poster')
+    loader.add_xpath('file_url', '//*[@id="player"]/source/@src')
+    # loader.add_xpath('poster_url', '//*[@id="player"]/@poster')
     return loader.load_item()
 
   def parse_other(self, response):
     loader = self._build_loader(response)
     loader.add_xpath('title', '//h1[@class="section h5"]/text()')
     loader.add_xpath('content', '//div/p/text()')
-    loader.add_xpath('href', '//div/img/@src')
+    loader.add_xpath('file_url', '//div/img/@src')
     return loader.load_item()

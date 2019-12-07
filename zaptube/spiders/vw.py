@@ -8,7 +8,7 @@ class Spider(CrawlSpider):
 
   allowed_domains = ['videoswhats.net']
 
-  start_urls = ['https://www.videoswhats.net']
+  start_urls = ['https://www.videoswhats.net/']
 
   rules = (
     Rule(
@@ -19,8 +19,8 @@ class Spider(CrawlSpider):
   def parse_item(self, response):
     loader = EntryLoader(item=Entry(), response=response)
     loader.add_xpath('title', '//*[@class="content"]/h1/text()')
-    loader.add_xpath('content', '//*[@class="text"]/p/text()')
-    loader.add_xpath('href', '//*[@id="object"]/img/@src')
-    loader.add_xpath('href', '//*[@id="object"]/video/source/@src')
+    loader.add_xpath('content', '//*[@class="text"]/*[not(self::span)]/text()')
+    loader.add_xpath('media', '//*[@id="object"]/img/@src')
+    loader.add_xpath('media', '//*[@id="object"]/video/source/@src')
     loader.add_xpath('poster', '//*[@id="object"]/video/@poster')
     return loader.load_item()

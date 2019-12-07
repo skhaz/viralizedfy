@@ -5,23 +5,20 @@ from scrapy.loader.processors import MapCompose, Join, TakeFirst
 
 
 class Entry(Item):
+  uid = Field()
   title = Field()
   content = Field()
   url = Field()
   spider = Field()
   timestamp = Field()
-  href = Field()
+  media = Field()
   poster = Field()
   mimetype = Field()
-
-
-def nuke_trash(text, pattern=r'^descri[cç][aã]o:?\s+'):
-  return re.sub(pattern, '', text, flags=re.IGNORECASE)
+  media_url = Field()
 
 
 class EntryLoader(ItemLoader):
   title_out = Join()
-  content_in = MapCompose(nuke_trash, str.strip)
   content_out = Join()
-  href_out = TakeFirst()
-  poster_out = Join()
+  media_in = TakeFirst()
+  media_out = Join()
