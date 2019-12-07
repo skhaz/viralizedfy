@@ -18,7 +18,6 @@ from jinja2 import Environment, BaseLoader
 
 
 class PreparePipeline():
-
   def process_item(self, item, spider):
     url = item['url'].encode('utf-8')
     title = item.get('title')
@@ -29,7 +28,7 @@ class PreparePipeline():
     sha256 = hashlib.sha256(url).digest()
     sliced = int.from_bytes(
       memoryview(sha256)[:N].tobytes(), byteorder=sys.byteorder)
-    uid = base36.dumps(sliced)
+    guid = base36.dumps(sliced)
 
     strip = str.strip
     lower = str.lower
@@ -40,16 +39,15 @@ class PreparePipeline():
     fragments = [
       *functools.reduce(
         lambda x, f: f(x), functions, title),
-      uid,
+      guid,
     ]
 
-    item['uid'] = '-'.join(fragments)
+    item['guid'] = '-'.join(fragments)
 
     return item
 
 
 class MimetypePipeline():
-
   def process_item(self, item, spider):
     media = item.get('media')
     if media is None:
@@ -58,34 +56,32 @@ class MimetypePipeline():
     mimetype, _ = mimetypes.guess_type(media)
     if mimetype is None:
       raise DropItem(f"Cannot determine the mimetype for media: {media}")
-
     item['mimetype'] = mimetype
 
-    item['ext'] = mimetypes.guess_extension(mimetype)
+    extension = mimetypes.guess_extension(mimetype)
+    if not extension:
+      raise DropItem(f"Cannot determine the extension for mimetype: {mimetype}")
+    item['extension'] = extension
 
     return item
 
 
 class DownloadPipeline(FilesPipeline):
-
   def get_media_requests(self, item, info):
-    url = item['media']
-    meta = {'uid': item['uid'], 'ext': item['ext']}
-    yield Request(url, meta=meta)
+    extension, guid, url = (item[key]
+      for key in ('extension', 'guid', 'url'))
+    yield Request(url, meta=dict(filename=''.join([guid, extension])))
 
   def file_path(self, request, response=None, info=None):
-    uid = request.meta['uid']
-    ext = request.meta['ext']
-    return ''.join([uid, ext])
+    return request.meta['filename']
 
   def item_completed(self, results, item, info):
-    item['media_url'] = "https://storage.googleapis.com/scrapy-test/" + results[0][1]['path']
+    item['ready'] = bool(results[0][0])
     return item
 
 
-class MarkdownifyPipeline():
-
-  template = Environment(loader=BaseLoader()).from_string("""---
+jinja2 = Environment(loader=BaseLoader()).from_string("""
+---
 title: {{ title }}
 tags: [""]
 draft: false
@@ -93,35 +89,38 @@ draft: false
 
 {{ content }}
 
-{% if media_url -%}
 {% if 'video' in mimetype -%}
 <video controls>
-  <source src="{{ media_url }}" type="{{ mimetype }}">
+  <source src="{{ filename }}" type="{{ mimetype }}">
 </video>
-{% else %}
-![{{ title }}]({{ media_url }})
-{% endif %}
+{% elif 'image' in mimetype %}
+![{{ title }}]({{ filename }})
+{% elif 'audio' in mimetype %}
+<audio controls>
+  <source src="{{ filename }}" type="{{ mimetype }}">
+</audio>
 {% endif -%}
-  """)
+""")
 
+
+class MarkdownifyPipeline():
   def process_item(self, item, spider):
-    title, content, mimetype, media_url, uid = (
-      item[key]
-      for key in (
-        'title',
+    content, extension, mimetype, guid, title = (
+      item[key] for key in (
         'content',
+        'extension',
         'mimetype',
-        'media_url',
-        'uid',
-      )
-    )
+        'guid',
+        'title',
+      ))
 
     context = locals().copy()
+    context['filename'] = f'{guid}{extension}'
     del context['self']
 
-    path = Path.cwd() / 'content'
+    path = Path.cwd() / 'output'
     path.mkdir(parents=True, exist_ok=True)
-    markdown = self.template.render(**context)
-    Path(path, '%s.md' % uid).write_text(markdown)
+    markdown = jinja2.render(**context)
+    Path(path, f'{guid}').write_text(markdown)
 
     return item

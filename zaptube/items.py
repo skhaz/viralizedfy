@@ -5,17 +5,17 @@ from scrapy.loader.processors import MapCompose, Join, TakeFirst
 
 
 class Entry(Item):
-  uid = Field()
-  title = Field()
   content = Field()
-  url = Field()
+  extension = Field()
+  guid = Field()
+  media = Field()
+  mimetype = Field()
+  poster = Field()
+  ready = Field()
   spider = Field()
   timestamp = Field()
-  media = Field()
-  poster = Field()
-  mimetype = Field()
-  ext = Field()
-  media_url = Field()
+  title = Field()
+  url = Field()
 
 
 class EntryLoader(ItemLoader):
