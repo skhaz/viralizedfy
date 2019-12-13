@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+import ffmpeg
+import click
+from PIL import Image
+
+
+def shrink(filename, size=(320, 240)):
+  prefix = '.thumbnail.'
+  if prefix in filename.name:
+    return
+
+  thumbnail = filename.with_name(
+    ''.join([filename.stem, prefix, '.jpg']))
+
+  with Image.open(filename) as image:
+    image.thumbnail(size)
+    image.convert('RGB').save(thumbnail, 'JPEG', quality=90)
+
+
+def screenshot(filename, frame=1):
+  output, err = (
+    ffmpeg
+    .input(filename)
+    .filter('select', 'gte(n,{})'.format(frame))
+    .output('pipe:', vframes=1, format='image2', vcodec='mjpeg')
+    .run(quiet=True, capture_stdout=True)
+  )
+
+  shot = filename.with_name(
+    ''.join([filename.stem, '.jpg']))
+
+  with open(shot, 'wb') as handle:
+    handle.write(output)
+
+  shrink(shot)
+
+
+def apply_for(func, suffixes, files):
+  [*map(func, {f for f in files if f.suffix in suffixes})]
+
+
+@click.command()
+@click.option('-d', '--directory', default=Path.cwd())
+def run(directory):
+  files = {f.resolve() for f in Path(directory).glob("**/*")}
+  apply_for(screenshot, ['.mp4', '.webm'], files)
+  apply_for(shrink, ['.gif', '.jpg', '.jpeg', '.png'], files)
+
+
+if __name__ == '__main__':
+  run()
